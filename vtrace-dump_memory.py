@@ -1,10 +1,10 @@
 #!/usr/bin/env python2
 # -*- coding: utf-8 -*-
 #
-#    vtrace-show_args_function.py - Script for vtrace API for display arguments function before call.
+#    vtrace-dump_memory.py - Dump memory from a breakpoint.
 #
-#    Syntax : ./vtrace-show_args_function.py <binary> <addr call function> <Numbers of arg>
-#    Exemple: ./vtrace-show_args_function.py ./binary 0x8048438 2
+#    Syntax : ./vtrace-dump_memory.py <binary> <addr - breakpoint> <memory addr> <size dump>
+#    Exemple: ./vtrace-dump_memory.py ./binary 0x8048438 0x08069322 256
 #
 #    Copyright (C) 2012-06 Jonathan Salwan - http://www.twitter.com/jonathansalwan
 #
@@ -29,26 +29,23 @@ import envi
 import struct
 from envi.archs.i386 import *
 
-def print_stack(trace, arg_number):
-   n = 0
-   esp = trace.getRegister(REG_ESP)
+def dump_memory(trace, memory, size):
    print "[+] Breakpoint at 0x%08x" %(trace.getRegister(REG_EIP))
-   while n < arg_number:
-      try:
-         arg  = trace.readMemory((esp+(n*4)), 4);
-      except:
-         print "[EE] Invalide ESP pointeur (0x%08x)" %(esp)
-         return
-      arg  = struct.unpack("<I", arg)[0]
-      try:
-         arg  = trace.readMemory(arg, 256)
-         print "[+] Arg [ESP+0x%x]\t: '%s'" %((n*4), arg.split('\0')[0])
-      except:
-         print "[+] Arg [ESP+0x%x]\t: %d (%x)" %((n*4), arg, arg)
-      n = n + 1
+   try:
+      dump  = trace.readMemory(memory, size);
+   except:
+      print "[EE] Impossible to read from  0x%08x" %(memory)
+      return
+   try:
+      fd = open("vtrace-memory.dump", "w")
+      fd.write(dump)
+      fd.close()
+      print "[+] Dump successful"
+   except:
+      print "[EE] Impossible de save the dump file"
    return
 
-def main(binary, breakpoint, arg_number):
+def main(binary, breakpoint, memory, size):
    trace = vtrace.getTrace()
    try:
       trace.execute(binary)
@@ -60,13 +57,13 @@ def main(binary, breakpoint, arg_number):
       print "[EE] Invalide addr %s" %(hex(breakpoint))
       return 
    trace.run()
-   print_stack(trace, arg_number)
+   dump_memory(trace, memory, size)
    return (0)
    
 if __name__ == "__main__":
-   if len(sys.argv) == 4:
-      sys.exit(main(sys.argv[1], int(sys.argv[2], 16), int(sys.argv[3])))
+   if len(sys.argv) == 5:
+      sys.exit(main(sys.argv[1], int(sys.argv[2], 16), int(sys.argv[3], 16), int(sys.argv[4])))
    else:
-      print "Usage: %s <binary> <addr call function> <Numbers of arg>" %(sys.argv[0])
+      print "Usage: %s <binary> <addr - breakpoint> <memory addr> <size dump>" %(sys.argv[0])
       sys.exit(-1)
 
