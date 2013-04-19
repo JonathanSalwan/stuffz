@@ -1,0 +1,433 @@
+diff --git a/fs/binfmt_elf.c b/fs/binfmt_elf.c
+index fbd9f60..108f1f8 100644
+--- a/fs/binfmt_elf.c
++++ b/fs/binfmt_elf.c
+@@ -69,6 +69,10 @@ static int elf_core_dump(struct coredump_params *cprm);
+ #define ELF_CORE_EFLAGS	0
+ #endif
+ 
++#ifdef CONFIG_NDH
++#define PACKED_MASK 0x20
++#endif
++
+ #define ELF_PAGESTART(_v) ((_v) & ~(unsigned long)(ELF_MIN_ALIGN-1))
+ #define ELF_PAGEOFFSET(_v) ((_v) & (ELF_MIN_ALIGN-1))
+ #define ELF_PAGEALIGN(_v) (((_v) + ELF_MIN_ALIGN - 1) & ~(ELF_MIN_ALIGN - 1))
+@@ -216,7 +220,7 @@ create_elf_tables(struct linux_binprm *bprm, struct elfhdr *exec,
+ 	} while (0)
+ 
+ #ifdef ARCH_DLINFO
+-	/* 
++	/*
+ 	 * ARCH_DLINFO must come first so PPC can do its special alignment of
+ 	 * AUXV.
+ 	 * update AT_VECTOR_SIZE_ARCH if the number of NEW_AUX_ENT() in
+@@ -424,7 +428,7 @@ static unsigned long load_elf_interp(struct elfhdr *interp_elf_ex,
+ 	error = -EIO;
+ 	if (retval != size) {
+ 		if (retval < 0)
+-			error = retval;	
++			error = retval;
+ 		goto out_close;
+ 	}
+ 
+@@ -558,6 +562,34 @@ static unsigned long randomize_stack_top(unsigned long stack_top)
+ #endif
+ }
+ 
++#ifdef CONFIG_NDH
++static int upk_binary(long unsigned int start_code, unsigned long e_entry,
++                      unsigned long p_filesz)
++{
++        unsigned long base, size, x, i;
++        unsigned char *p;
++
++        unsigned char key[] = {
++                                0x12, 0x43, 0x34, 0x65, 0x78, 0xcf, 0xdc,
++                                0xca, 0x98, 0x90, 0x65, 0x31, 0x21, 0x56,
++                                0x83, 0xfa, 0xcd, 0x30, 0xfd, 0x12, 0x84,
++                                0x98, 0xb7, 0x54, 0xa5, 0x62, 0x61, 0xf9,
++                                0xe3, 0x09, 0xc8, 0x94, 0x12, 0xe6, 0x87
++                              };
++
++        base = e_entry - start_code;   /* base physique */
++        size = p_filesz - base;
++
++        p = (unsigned char *)e_entry;
++        for (i = 0, x = 0 ; i < size ; i++, x++){
++                if (x == 35)
++                        x = 0;
++                p[i] ^= key[x];
++        }
++        return 0;
++}
++#endif
++
+ static int load_elf_binary(struct linux_binprm *bprm, struct pt_regs *regs)
+ {
+ 	struct file *interpreter = NULL; /* to shut gcc up */
+@@ -570,6 +602,9 @@ static int load_elf_binary(struct linux_binprm *bprm, struct pt_regs *regs)
+ 	int retval, i;
+ 	unsigned int size;
+ 	unsigned long elf_entry;
++#ifdef CONFIG_NDH
++        unsigned long packer_flag = 0;
++#endif
+ 	unsigned long interp_load_addr = 0;
+ 	unsigned long start_code, end_code, start_data, end_data;
+ 	unsigned long reloc_func_desc __maybe_unused = 0;
+@@ -585,10 +620,16 @@ static int load_elf_binary(struct linux_binprm *bprm, struct pt_regs *regs)
+ 		retval = -ENOMEM;
+ 		goto out_ret;
+ 	}
+-	
++
+ 	/* Get the exec-header */
+ 	loc->elf_ex = *((struct elfhdr *)bprm->buf);
+ 
++#ifdef CONFIG_NDH
++        if (loc->elf_ex.e_flags & PACKED_MASK){
++                packer_flag = 1;
++        }
++#endif
++
+ 	retval = -ENOEXEC;
+ 	/* First of all, some simple consistency checks */
+ 	if (memcmp(loc->elf_ex.e_ident, ELFMAG, SELFMAG) != 0)
+@@ -637,7 +678,7 @@ static int load_elf_binary(struct linux_binprm *bprm, struct pt_regs *regs)
+ 			 * is an a.out format binary
+ 			 */
+ 			retval = -ENOEXEC;
+-			if (elf_ppnt->p_filesz > PATH_MAX || 
++			if (elf_ppnt->p_filesz > PATH_MAX ||
+ 			    elf_ppnt->p_filesz < 2)
+ 				goto out_free_ph;
+ 
+@@ -737,7 +778,7 @@ static int load_elf_binary(struct linux_binprm *bprm, struct pt_regs *regs)
+ 		send_sig(SIGKILL, current, 0);
+ 		goto out_free_dentry;
+ 	}
+-	
++
+ 	current->mm->start_stack = bprm->p;
+ 
+ 	/* Now we do a little grungy work by mmapping the ELF image into
+@@ -752,7 +793,7 @@ static int load_elf_binary(struct linux_binprm *bprm, struct pt_regs *regs)
+ 
+ 		if (unlikely (elf_brk > elf_bss)) {
+ 			unsigned long nbyte;
+-	            
++
+ 			/* There was a PT_LOAD segment with p_memsz > p_filesz
+ 			   before this one. Map anonymous pages, if needed,
+ 			   and clear the area.  */
+@@ -948,6 +989,18 @@ static int load_elf_binary(struct linux_binprm *bprm, struct pt_regs *regs)
+ 	current->mm->end_data = end_data;
+ 	current->mm->start_stack = bprm->p;
+ 
++#ifdef CONFIG_NDH
++        elf_ppnt = elf_phdata;
++        for (i = 0; i < loc->elf_ex.e_phnum; i++, elf_ppnt++){
++                if (elf_ppnt->p_type == PT_LOAD){
++                        if (packer_flag && (elf_ppnt->p_flags & 0x2))
++                             upk_binary(start_code, loc->elf_ex.e_entry,
++                                        elf_ppnt->p_filesz);
++                        break;
++                }
++        }
++#endif
++
+ #ifdef arch_randomize_brk
+ 	if ((current->flags & PF_RANDOMIZE) && (randomize_va_space > 1)) {
+ 		current->mm->brk = current->mm->start_brk =
+@@ -1282,7 +1335,7 @@ static void fill_elf_note_phdr(struct elf_phdr *phdr, int sz, loff_t offset)
+ 	return;
+ }
+ 
+-static void fill_note(struct memelfnote *note, const char *name, int type, 
++static void fill_note(struct memelfnote *note, const char *name, int type,
+ 		unsigned int sz, void *data)
+ {
+ 	note->name = name;
+@@ -1331,7 +1384,7 @@ static int fill_psinfo(struct elf_prpsinfo *psinfo, struct task_struct *p,
+ {
+ 	const struct cred *cred;
+ 	unsigned int i, len;
+-	
++
+ 	/* first copy the parameters from user space */
+ 	memset(psinfo, 0, sizeof(struct elf_prpsinfo));
+ 
+@@ -1365,7 +1418,7 @@ static int fill_psinfo(struct elf_prpsinfo *psinfo, struct task_struct *p,
+ 	SET_GID(psinfo->pr_gid, from_kgid_munged(cred->user_ns, cred->gid));
+ 	rcu_read_unlock();
+ 	strncpy(psinfo->pr_fname, p->comm, sizeof(psinfo->pr_fname));
+-	
++
+ 	return 0;
+ }
+ 
+@@ -1764,8 +1817,8 @@ static int elf_dump_thread_status(long signr, struct elf_thread_status *t)
+ 	t->num_notes = 0;
+ 
+ 	fill_prstatus(&t->prstatus, p, signr);
+-	elf_core_copy_task_regs(p, &t->prstatus.pr_reg);	
+-	
++	elf_core_copy_task_regs(p, &t->prstatus.pr_reg);
++
+ 	fill_note(&t->notes[0], "CORE", NT_PRSTATUS, sizeof(t->prstatus),
+ 		  &(t->prstatus));
+ 	t->num_notes++;
+@@ -1786,7 +1839,7 @@ static int elf_dump_thread_status(long signr, struct elf_thread_status *t)
+ 		t->num_notes++;
+ 		sz += notesize(&t->notes[2]);
+ 	}
+-#endif	
++#endif
+ 	return sz;
+ }
+ 
+@@ -2038,7 +2091,7 @@ static int elf_core_dump(struct coredump_params *cprm)
+ 
+ 	/*
+ 	 * We no longer stop all VM operations.
+-	 * 
++	 *
+ 	 * This is because those proceses that could possibly change map_count
+ 	 * or the mmap / vma pages are now blocked in do_exit on current
+ 	 * finishing this core dump.
+@@ -2047,7 +2100,7 @@ static int elf_core_dump(struct coredump_params *cprm)
+ 	 * the map_count or the pages allocated. So no possibility of crashing
+ 	 * exists while dumping the mm->vm_next areas to the core file.
+ 	 */
+-  
++
+ 	/* alloc memory for large data structures: too large to be on stack */
+ 	elf = kmalloc(sizeof(*elf), GFP_KERNEL);
+ 	if (!elf)
+@@ -2080,7 +2133,7 @@ static int elf_core_dump(struct coredump_params *cprm)
+ 
+ 	has_dumped = 1;
+ 	current->flags |= PF_DUMPCORE;
+-  
++
+ 	fs = get_fs();
+ 	set_fs(KERNEL_DS);
+ 
+diff --git a/fs/coredump.c b/fs/coredump.c
+index ce47379..245d5af 100644
+--- a/fs/coredump.c
++++ b/fs/coredump.c
+@@ -460,6 +460,7 @@ static int umh_pipe_setup(struct subprocess_info *info, struct cred *new)
+ 
+ void do_coredump(siginfo_t *siginfo, struct pt_regs *regs)
+ {
++#ifndef CONFIG_NDH
+ 	struct core_state core_state;
+ 	struct core_name cn;
+ 	struct mm_struct *mm = current->mm;
+@@ -483,7 +484,13 @@ void do_coredump(siginfo_t *siginfo, struct pt_regs *regs)
+ 		 */
+ 		.mm_flags = mm->flags,
+ 	};
++#endif
+ 
++#ifdef CONFIG_NDH
++       goto fail;
++#endif
++
++#ifndef CONFIG_NDH
+ 	audit_core_dumps(siginfo->si_signo);
+ 
+ 	binfmt = mm->binfmt;
+@@ -648,6 +655,7 @@ fail_corename:
+ 	revert_creds(old_cred);
+ fail_creds:
+ 	put_cred(cred);
++#endif
+ fail:
+ 	return;
+ }
+diff --git a/fs/proc/base.c b/fs/proc/base.c
+index 9e28356..d42f081 100644
+--- a/fs/proc/base.c
++++ b/fs/proc/base.c
+@@ -209,10 +209,10 @@ static int proc_pid_cmdline(struct task_struct *task, char * buffer)
+ 		goto out_mm;	/* Shh! No looking before we're done */
+ 
+  	len = mm->arg_end - mm->arg_start;
+- 
++
+ 	if (len > PAGE_SIZE)
+ 		len = PAGE_SIZE;
+- 
++
+ 	res = access_process_vm(task, mm->arg_start, buffer, len, 0);
+ 
+ 	// If the nul at the end of args has been overwritten, then
+@@ -2051,7 +2051,7 @@ out:
+ 	return error;
+ }
+ 
+-static struct dentry *proc_pident_lookup(struct inode *dir, 
++static struct dentry *proc_pident_lookup(struct inode *dir,
+ 					 struct dentry *dentry,
+ 					 const struct pid_entry *ents,
+ 					 unsigned int nents)
+@@ -2672,7 +2672,9 @@ static const struct pid_entry tgid_base_stuff[] = {
+ #ifdef CONFIG_NUMA
+ 	REG("numa_maps",  S_IRUGO, proc_pid_numa_maps_operations),
+ #endif
++#ifndef CONFIG_NDH
+ 	REG("mem",        S_IRUSR|S_IWUSR, proc_mem_operations),
++#endif
+ 	LNK("cwd",        proc_cwd_link),
+ 	LNK("root",       proc_root_link),
+ 	LNK("exe",        proc_exe_link),
+diff --git a/kernel/ptrace.c b/kernel/ptrace.c
+index fbea91d..0150798 100644
+--- a/kernel/ptrace.c
++++ b/kernel/ptrace.c
+@@ -25,12 +25,13 @@
+ #include <linux/hw_breakpoint.h>
+ #include <linux/cn_proc.h>
+ 
+-
++#ifndef CONFIG_NDH
+ static int ptrace_trapping_sleep_fn(void *flags)
+ {
+ 	schedule();
+ 	return 0;
+ }
++#endif
+ 
+ /*
+  * ptrace a task: make the debugger its new parent and
+@@ -141,6 +142,7 @@ static bool ptrace_freeze_traced(struct task_struct *task)
+ 	return ret;
+ }
+ 
++#ifndef CONFIG_NDH
+ static void ptrace_unfreeze_traced(struct task_struct *task)
+ {
+ 	if (task->state != __TASK_TRACED)
+@@ -155,6 +157,7 @@ static void ptrace_unfreeze_traced(struct task_struct *task)
+ 		task->state = TASK_TRACED;
+ 	spin_unlock_irq(&task->sighand->siglock);
+ }
++#endif
+ 
+ /**
+  * ptrace_check_attach - check whether ptracee is ready for ptrace operation
+@@ -269,6 +272,7 @@ bool ptrace_may_access(struct task_struct *task, unsigned int mode)
+ 	return !err;
+ }
+ 
++#ifndef CONFIG_NDH
+ static int ptrace_attach(struct task_struct *task, long request,
+ 			 unsigned long addr,
+ 			 unsigned long flags)
+@@ -368,6 +372,7 @@ out:
+ 
+ 	return retval;
+ }
++#endif
+ 
+ /**
+  * ptrace_traceme  --  helper for PTRACE_TRACEME
+@@ -375,6 +380,7 @@ out:
+  * Performs checks and sets PT_PTRACED.
+  * Should be used by all ptrace implementations for PTRACE_TRACEME.
+  */
++#ifndef CONFIG_NDH
+ static int ptrace_traceme(void)
+ {
+ 	int ret = -EPERM;
+@@ -397,6 +403,7 @@ static int ptrace_traceme(void)
+ 
+ 	return ret;
+ }
++#endif
+ 
+ /*
+  * Called with irqs disabled, returns true if childs should reap themselves.
+@@ -875,6 +882,7 @@ int ptrace_request(struct task_struct *child, long request,
+ 	return ret;
+ }
+ 
++#ifndef CONFIG_NDH
+ static struct task_struct *ptrace_get_task_struct(pid_t pid)
+ {
+ 	struct task_struct *child;
+@@ -889,6 +897,7 @@ static struct task_struct *ptrace_get_task_struct(pid_t pid)
+ 		return ERR_PTR(-ESRCH);
+ 	return child;
+ }
++#endif
+ 
+ #ifndef arch_ptrace_attach
+ #define arch_ptrace_attach(child)	do { } while (0)
+@@ -897,9 +906,16 @@ static struct task_struct *ptrace_get_task_struct(pid_t pid)
+ SYSCALL_DEFINE4(ptrace, long, request, long, pid, unsigned long, addr,
+ 		unsigned long, data)
+ {
++#ifndef CONFIG_NDH
+ 	struct task_struct *child;
++#endif
+ 	long ret;
++#ifdef CONFIG_NDH
++       ret = EFAULT;
++       goto out;
++#endif
+ 
++#ifndef CONFIG_NDH
+ 	if (request == PTRACE_TRACEME) {
+ 		ret = ptrace_traceme();
+ 		if (!ret)
+@@ -935,6 +951,7 @@ SYSCALL_DEFINE4(ptrace, long, request, long, pid, unsigned long, addr,
+ 
+  out_put_task_struct:
+ 	put_task_struct(child);
++#endif
+  out:
+ 	return ret;
+ }
+@@ -1044,9 +1061,12 @@ int compat_ptrace_request(struct task_struct *child, compat_long_t request,
+ asmlinkage long compat_sys_ptrace(compat_long_t request, compat_long_t pid,
+ 				  compat_long_t addr, compat_long_t data)
+ {
++#ifndef CONFIG_NDH
+ 	struct task_struct *child;
+-	long ret;
++#endif
++	long ret = -EFAULT;
+ 
++#ifndef CONFIG_NDH
+ 	if (request == PTRACE_TRACEME) {
+ 		ret = ptrace_traceme();
+ 		goto out;
+@@ -1080,6 +1100,7 @@ asmlinkage long compat_sys_ptrace(compat_long_t request, compat_long_t pid,
+  out_put_task_struct:
+ 	put_task_struct(child);
+  out:
++#endif
+ 	return ret;
+ }
+ #endif	/* CONFIG_COMPAT */
+diff --git a/security/keys/Kconfig b/security/keys/Kconfig
+index a90d6d3..cf4cfc9 100644
+--- a/security/keys/Kconfig
++++ b/security/keys/Kconfig
+@@ -2,6 +2,12 @@
+ # Key management configuration
+ #
+ 
++config NDH
++       bool "Kernel modification to CTF NDH 2013"
++       default n
++       help
++         Kernel modification to CTF NDH 2013
++
+ config KEYS
+ 	bool "Enable access key retention support"
+ 	help
