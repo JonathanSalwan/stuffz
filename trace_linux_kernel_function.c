@@ -15,9 +15,10 @@
 **  along with this program.  If not, see <http://www.gnu.org/licenses/>.
 **
 **
-**  Little script to  trace a specific  function in  kernel. Send your 
-**  function name in the procfs node to start the tracing. Send 'none' 
-**  in procfs node to stop the tracing. Below, a little example.
+**  Little script to trace a specific kernel function and display
+**  arguments / call stack. Send your function name in the procfs 
+**  node to start the tracing. Send 'none' in procfs node to stop 
+**  the tracing. Below, a little example.
 **
 **  # insmod ./trace.ko
 **  # cat /proc/trace_func 
@@ -73,10 +74,10 @@ static void trace(void *arg0, void *arg1, void *arg2, void *arg3, void *arg4, vo
   printk("Function  : %s\n\n", jp.kp.symbol_name);
   printk("args 0: %08x  args 1: %08x  args 2: %08x\n", (unsigned int)arg0, 
                                                        (unsigned int)arg1,
-                   (unsigned int)arg2);
+                                                       (unsigned int)arg2);
   printk("args 3: %08x  args 4: %08x  args 5: %08x\n\n", (unsigned int)arg3, 
                                                          (unsigned int)arg4,
-                     (unsigned int)arg5);
+                                                         (unsigned int)arg5);
   dump_stack();
   printk("]= EOF -------------------\n");
   jprobe_return();
