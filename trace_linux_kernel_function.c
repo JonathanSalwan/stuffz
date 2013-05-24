@@ -68,16 +68,12 @@ static struct jprobe jp = {
   }
 };
 
-static void trace(void *arg0, void *arg1, void *arg2, void *arg3, void *arg4, void *arg5)
+static void trace(unsigned long clone_flags, unsigned long stack_start,
+                  struct pt_regs *regs, unsigned long stack_size,
+                  int __user *parent_tidptr, int __user *child_tidptr)
 {
   printk("]=------------------------\n");
   printk("Function  : %s\n\n", jp.kp.symbol_name);
-  printk("args 0: %08x  args 1: %08x  args 2: %08x\n", (unsigned int)arg0, 
-                                                       (unsigned int)arg1,
-                                                       (unsigned int)arg2);
-  printk("args 3: %08x  args 4: %08x  args 5: %08x\n\n", (unsigned int)arg3, 
-                                                         (unsigned int)arg4,
-                                                         (unsigned int)arg5);
   dump_stack();
   printk("]= EOF -------------------\n");
   jprobe_return();
