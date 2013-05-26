@@ -68,12 +68,12 @@ static struct jprobe jp = {
   }
 };
 
-static void trace(unsigned long clone_flags, unsigned long stack_start,
-                  struct pt_regs *regs, unsigned long stack_size,
-                  int __user *parent_tidptr, int __user *child_tidptr)
+static void trace(void *arg0, void *arg1, void *arg2, void *arg3, void *arg4, void *arg5)
 {
   printk("]=------------------------\n");
   printk("Function  : %s\n\n", jp.kp.symbol_name);
+  printk("Arg0 : %08x    Arg1 : %08x    Arg2 : %08x\n",   (unsigned int)arg0, (unsigned int)arg1, (unsigned int)arg2);
+  printk("Arg3 : %08x    Arg4 : %08x    Arg5 : %08x\n\n", (unsigned int)arg3, (unsigned int)arg4, (unsigned int)arg5);
   dump_stack();
   printk("]= EOF -------------------\n");
   jprobe_return();
@@ -94,16 +94,16 @@ static ssize_t handler_proc_write(struct file *file, const char __user *buffer, 
   if (!memcmp(jp.kp.symbol_name, "none", 4)){
     kfree(jp.kp.symbol_name);
     jp.kp.symbol_name = NULL;
-    printk("trace_func: Tracing stoped\n");
+    printk("trace: Tracing stoped\n");
     return count;
   }
   else if ((ret = register_jprobe(&jp)) < 0) {
-    printk("trace_func: register_jprobe failed, returned %d\n", ret);
+    printk("trace: register_jprobe failed, returned %d\n", ret);
     kfree(jp.kp.symbol_name);
     jp.kp.symbol_name = NULL;
     return -ENOSYS;
   }
-  printk("trace_func: %s traced\n", jp.kp.symbol_name);
+  printk("trace: %s traced\n", jp.kp.symbol_name);
   return count;
 }
 
@@ -126,7 +126,7 @@ static int __init mod_init(void)
 {
   struct proc_dir_entry *proc_entry;
 
-  proc_entry = create_proc_entry("trace_func", 0666, NULL);
+  proc_entry = create_proc_entry("trace", 0666, NULL);
   if (proc_entry){
     proc_entry->write_proc  = handler_proc_write;
     proc_entry->read_proc   = handler_proc_read;
@@ -138,11 +138,12 @@ static int __init mod_init(void)
 static void __exit mod_exit(void)
 {
   unregister_jprobe(&jp);
-  remove_proc_entry("trace_func", NULL);
+  remove_proc_entry("trace", NULL);
 }
 
 module_init(mod_init);
 module_exit(mod_exit);
 
 MODULE_LICENSE("GPL");
+
 
