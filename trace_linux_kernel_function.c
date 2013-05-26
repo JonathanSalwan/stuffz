@@ -94,6 +94,7 @@ static ssize_t handler_proc_write(struct file *file, const char __user *buffer, 
   if (!memcmp(jp.kp.symbol_name, "none", 4)){
     kfree(jp.kp.symbol_name);
     jp.kp.symbol_name = NULL;
+    unregister_jprobe(&jp);
     printk("trace: Tracing stoped\n");
     return count;
   }
@@ -117,7 +118,7 @@ static ssize_t handler_proc_read(char *page, char **start, off_t off, int count,
   }
   else {
     sprintf(page, "Function traceed : %s\n", jp.kp.symbol_name);
-    ret = strlen(jp.kp.symbol_name) + 19;
+    ret = strlen(jp.kp.symbol_name) + 20;
   }
   return ret;
 }
