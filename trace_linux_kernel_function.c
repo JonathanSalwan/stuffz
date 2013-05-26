@@ -49,6 +49,8 @@
 **  # printf 'none' > /proc/trace_func
 **
 **
+**  See: http://shell-storm.org/blog/Trace-and-debug-the-Linux-Kernel-functons/
+**
 **  Tested on 3.5.7 custom kernel with gentoo.
 **
 */
