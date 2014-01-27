@@ -1,7 +1,7 @@
 #!/usr/bin/env python2
 ## -*- coding: utf-8 -*-
 ##
-##  Jonathan Salwan - 2014-01-27 - metaSample.py v0.1
+##  Jonathan Salwan - 2014-01-27
 ## 
 ##  http://www.shell-storm.org/
 ##  http://twitter.com/JonathanSalwan
@@ -11,16 +11,16 @@
 ##  the Free Software  Foundation, either  version 3 of  the License, or
 ##  (at your option) any later version.
 ##
-##  Note: Just a simple way to generate valid samples. You can use this script before compiling
+##  Note: Just a simple way to generate valid samples. You can use script before compiling
 ##  your sources (metaprog) or on raw files.
 ##
 ##  =================================
 ##
 ##  Meta patterns supported:
 ##
-##  __GENINTDEC#<uniqID>:[<start value>:<end_value>]__  == Generates several same file with all range values in decimal.
-##  __GENINTHEX#<uniqID>:[<start value>:<end_value>]__  == Generates several same file with all range values in hexadecimal.
-##  __GENSTR#<uniqID>:[<str1>,<str2>,<str3>,...]__      == Generates several same file with all strings listed.
+##  __GENINTDEC#<uniqID>:[<start value>:<end_value>]__  == Generates the same file with all range values in decimal.
+##  __GENINTHEX#<uniqID>:[<start value>:<end_value>]__  == Generates the same file with all range values in hexadecimal.
+##  __GENSTR#<uniqID>:[<str1>,<str2>,<str3>,...]__      == Generates the same file with all strings listed.
 ##
 ##  =================================
 ##
@@ -91,7 +91,21 @@
 ##  f0 ff ff 6f 00 00 00 00 be 0e 40 00 00 00 00 00 
 ##  00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 
 ##
-
+##  =================================
+##
+##  Using example:
+##
+##  $ ./metaSample.py --file src_examples/example_1.c --outputDir ./output -v
+##  [+] Opening file: src_examples/example_1.c
+##  [+] Finding metadata...
+##  [+] Metadata found:
+##      -> __GENINTDEC#1:[-3:2]__
+##      -> __GENINTDEC#2:[6:10]__
+##      -> __GENSTR#1:["AAAAAAAAAAAA","%x%x%x%x%x%x%x%x",NULL,"\x00\x01\x02\x03\x04"]__
+##  [+] Generating samples in progress...
+##  [+] Number of samples generated: 120
+##
+##
 
 import getopt
 import hashlib
